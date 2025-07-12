@@ -15,37 +15,46 @@
  * Ответ будет приходить в поле {result}
  */
  import Api from '../tools/api';
+ import * as R from 'ramda';
 
  const api = new Api();
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
-
  const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
      writeLog(value);
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
+     const validate = R.allPass([
+         R.pipe(parseFloat, Number.isFinite),
+         R.pipe(parseFloat, R.gt(R.__, 0)),
+         R.pipe(parseFloat, Math.abs, R.toString, R.length, R.lt(R.__, 10)),
+         R.pipe(parseFloat, Math.abs, R.toString, R.length, R.gt(R.__, 2)),
+         R.test(/^[0-9]+\.?[0-9]*$/),
+     ]);
+
+     if (!validate(value)) {
+         return handleError('ValidationError');
+     }
+
+     const processStep = R.curry((action, value) => {
+         writeLog(value);
+         return action(value);
      });
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
-
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
-
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
+     Promise.resolve(value)
+         .then(R.pipe(
+             parseFloat,
+             Math.round,
+             processStep(R.identity)
+         ))
+         .then(number => api.get('https://api.tech/numbers/base', {from: 10, to: 2, number}))
+         .then(R.prop('result'))
+         .then(processStep(R.identity))
+         .then(processStep(R.length))
+         .then(processStep(R.multiply(R.__, R.__)))
+         .then(processStep(R.modulo(R.__, 3)))
+         .then(remainder => api.get(`https://animals.tech/${remainder}`, {}))
+         .then(R.prop('result'))
+         .then(handleSuccess)
+         .catch(handleError);
  }
 
 export default processSequence;
