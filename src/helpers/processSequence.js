@@ -19,31 +19,41 @@ import * as R from "ramda";
 
 const api = new Api();
 
+// Pure functions
+const getResult = R.prop("result");
+const square = R.converge(R.multiply, [R.identity, R.identity]);
+const mod3 = R.modulo(R.__, 3);
+const round = R.pipe(parseFloat, Math.round);
+
+// Validation
+const isValidLength = R.both(
+    R.pipe(R.length, R.lt(R.__, 10)),
+    R.pipe(R.length, R.gt(R.__, 2))
+);
+const isPositiveNumber = R.both(
+    R.pipe(parseFloat, Number.isFinite),
+    R.pipe(parseFloat, R.gt(R.__, 0))
+);
+const isValidFormat = R.test(/^[0-9]+(?:\.[0-9]+)?$/);
+const validate = R.allPass([
+    isPositiveNumber,
+    R.pipe(parseFloat, R.toString, isValidLength),
+    isValidFormat
+]);
+
+// API calls
+const getBinary = number =>
+    api.get("https://api.tech/numbers/base", { from: 10, to: 2, number });
+const getAnimal = remainder =>
+    api.get(`https://animals.tech/${remainder}`, {});
+
 const processSequence = ({ value, writeLog, handleSuccess, handleError }) => {
     const logStep = R.tap(writeLog);
-    const getResult = R.prop("result");
-    const square = R.converge(R.multiply, [R.identity, R.identity]);
-    const mod3 = R.modulo(R.__, 3);
-
-    const isValidLength = R.both(
-        R.pipe(R.length, R.lt(R.__, 10)),
-        R.pipe(R.length, R.gt(R.__, 2))
-    );
-    const isPositiveNumber = R.both(
-        R.pipe(parseFloat, Number.isFinite),
-        R.pipe(parseFloat, R.gt(R.__, 0))
-    );
-    const isValidFormat = R.test(/^[0-9]+(?:\.[0-9]+)?$/);
 
     // Step 1
     writeLog(value);
 
     // Step 2
-    const validate = R.allPass([
-        isPositiveNumber,
-        R.pipe(parseFloat, R.toString, isValidLength),
-        isValidFormat
-    ]);
     if (!validate(value)) {
         handleError("ValidationError");
         return;
@@ -71,6 +81,7 @@ const processSequence = ({ value, writeLog, handleSuccess, handleError }) => {
             R.curryN(1, remainder => api.get(`https://animals.tech/${remainder}`, {})),
             R.andThen(getResult),
             R.andThen(handleSuccess),
+            R.otherwise(handleError),
         )),
         R.otherwise(handleError),
     );
