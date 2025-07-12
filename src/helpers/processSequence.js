@@ -20,36 +20,62 @@ import * as R from "ramda";
 const api = new Api();
 
 const processSequence = ({ value, writeLog, handleSuccess, handleError }) => {
+    const logStep = R.tap(writeLog);
+    const getResult = R.prop("result");
+    const square = R.converge(R.multiply, [R.identity, R.identity]);
+    const mod3 = R.modulo(R.__, 3);
+
+    const isValidLength = R.both(
+        R.pipe(R.length, R.lt(R.__, 10)),
+        R.pipe(R.length, R.gt(R.__, 2))
+    );
+    const isPositiveNumber = R.both(
+        R.pipe(parseFloat, Number.isFinite),
+        R.pipe(parseFloat, R.gt(R.__, 0))
+    );
+    const isValidFormat = R.test(/^[0-9]+(?:\.[0-9]+)?$/);
+
+    // Step 1
     writeLog(value);
 
+    // Step 2
     const validate = R.allPass([
-        R.pipe(parseFloat, Number.isFinite),
-        R.pipe(parseFloat, R.gt(R.__, 0)),
-        R.pipe(parseFloat, Math.abs, R.toString, R.length, R.lt(R.__, 10)),
-        R.pipe(parseFloat, Math.abs, R.toString, R.length, R.gt(R.__, 2)),
-        R.test(/^[0-9]+\.?[0-9]*$/),
+        isPositiveNumber,
+        R.pipe(parseFloat, R.toString, isValidLength),
+        isValidFormat
     ]);
-
     if (!validate(value)) {
-        return handleError("ValidationError");
+        handleError("ValidationError");
+        return;
     }
 
-    const processStep = R.tap(writeLog);
+    const processValue = R.pipe(
+        // Step 3
+        parseFloat,
+        Math.round,
+        logStep,
+        // Step 4
+        R.curryN(1, number => api.get("https://api.tech/numbers/base", { from: 10, to: 2, number })),
+        R.andThen(R.pipe(
+            getResult,
+            logStep,
+            // Step 5
+            R.length,
+            logStep,
+            // Step 6
+            square,
+            logStep,
+            // Step 7
+            mod3,
+            logStep,
+            R.curryN(1, remainder => api.get(`https://animals.tech/${remainder}`, {})),
+            R.andThen(getResult),
+            R.andThen(handleSuccess),
+        )),
+        R.otherwise(handleError),
+    );
 
-    Promise.resolve(value)
-        .then(R.pipe(parseFloat, Math.round, processStep(R.identity)))
-        .then((number) =>
-            api.get("https://api.tech/numbers/base", { from: 10, to: 2, number }),
-        )
-        .then(R.prop("result"))
-        .then(processStep(R.identity))
-        .then(processStep(R.length))
-        .then(processStep(R.multiply(R.__, R.__)))
-        .then(processStep(R.modulo(R.__, 3)))
-        .then((remainder) => api.get(`https://animals.tech/${remainder}`, {}))
-        .then(R.prop("result"))
-        .then(handleSuccess)
-        .catch(handleError);
+    processValue(value);
 };
 
 export default processSequence;
